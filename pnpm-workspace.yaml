@@ -1,0 +1,7 @@
+allowBuilds:
+  '@stripe/cli': true
+  esbuild: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - drizzle-orm@0.45.4
+  - lucide-react@1.53.0

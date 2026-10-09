@@ -1,0 +1,146 @@
+:root {
+  /* Rally Red */
+  --rly-red-50: #FDF1F1;
+  --rly-red-100: #F9DCDD;
+  --rly-red-300: #EB8A8E;
+  --rly-red-500: #D21F26;
+  --rly-red-600: #B8181F;
+  --rly-red-700: #951319;
+  --rly-red-900: #4E0A0D;
+  /* Carbon → Paper neutrals */
+  --rly-carbon: #0D0D0E;
+  --rly-graphite: #18181A;
+  --rly-gunmetal: #26262A;
+  --rly-steel: #5E5E64;
+  --rly-alloy: #9A9AA0;
+  --rly-mist: #D6D6D9;
+  --rly-haze: #E9E9EB;
+  --rly-paper: #F5F5F3;
+  --rly-white: #FFFFFF;
+  /* Status */
+  --rly-green: #1E7F4A;
+  --rly-green-50: #E8F4EC;
+  --rly-amber: #A86E06;
+  --rly-amber-50: #FBF2DF;
+  --rly-blue: #2F5BC9;
+  --rly-blue-50: #E8EEFB;
+
+  /* Semantic */
+  --bg-page: var(--rly-paper);
+  --bg-surface: var(--rly-white);
+  --bg-sunken: var(--rly-haze);
+  --bg-inverse: var(--rly-carbon);
+  --bg-inverse-2: var(--rly-graphite);
+  --bg-inverse-3: var(--rly-gunmetal);
+  --fg-1: var(--rly-carbon);
+  --fg-2: var(--rly-steel);
+  --fg-3: var(--rly-alloy);
+  --fg-on-inverse: var(--rly-white);
+  --fg-on-inverse-2: var(--rly-alloy);
+  --fg-on-accent: var(--rly-white);
+  --border-1: var(--rly-haze);
+  --border-2: var(--rly-mist);
+  --border-strong: var(--rly-carbon);
+  --border-inverse: var(--rly-gunmetal);
+  --accent: var(--rly-red-500);
+  --accent-hover: var(--rly-red-600);
+  --accent-press: var(--rly-red-700);
+  --accent-tint: var(--rly-red-50);
+  --focus-ring: var(--rly-red-500);
+  --success: var(--rly-green);
+  --success-tint: var(--rly-green-50);
+  --warning: var(--rly-amber);
+  --warning-tint: var(--rly-amber-50);
+  --info: var(--rly-blue);
+  --info-tint: var(--rly-blue-50);
+  --danger: var(--rly-red-600);
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --sp-20: 80px;
+  --sp-24: 96px;
+
+  --r-0: 0px;
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-pill: 999px;
+
+  /* Apex cut — the signature 45° corner clip */
+  --apex-s: 8px;
+  --apex: 12px;
+  --apex-l: 20px;
+  --clip-apex: polygon(0 0, calc(100% - var(--apex)) 0, 100% var(--apex), 100% 100%, 0 100%);
+  --clip-apex-s: polygon(0 0, calc(100% - var(--apex-s)) 0, 100% var(--apex-s), 100% 100%, 0 100%);
+  --clip-apex-l: polygon(0 0, calc(100% - var(--apex-l)) 0, 100% var(--apex-l), 100% 100%, 0 100%);
+
+  --bw: 1px;
+  --bw-strong: 1.5px;
+  --stripe: 3px;
+
+  --sh-1: 0 1px 2px rgba(13, 13, 14, 0.06);
+  --sh-2: 0 10px 24px -10px rgba(13, 13, 14, 0.22);
+  --sh-3: 0 28px 56px -16px rgba(13, 13, 14, 0.34);
+
+  --ease-throttle: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-brake: cubic-bezier(0.6, 0, 0.4, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 360ms;
+
+  --tap-min: 44px;
+  --container: 1200px;
+  --gutter: 24px;
+
+  /* Typography — font families come from next/font variables set on <html> */
+  --font-display: var(--font-archivo), 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: var(--font-archivo), 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --wdth-expanded: 125;
+  --wdth-normal: 100;
+  --wdth-condensed: 75;
+
+  --fs-display-xl: 72px;
+  --fs-display-l: 56px;
+  --fs-display-m: 40px;
+  --fs-h1: 32px;
+  --fs-h2: 24px;
+  --fs-h3: 20px;
+  --fs-body-l: 18px;
+  --fs-body: 16px;
+  --fs-body-s: 14px;
+  --fs-caption: 12px;
+  --fs-label: 11px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 850;
+
+  --lh-tight: 0.95;
+  --lh-snug: 1.15;
+  --lh-body: 1.5;
+
+  --tr-display: -0.01em;
+  --tr-heading: -0.005em;
+  --tr-label: 0.14em;
+  --tr-button: 0.1em;
+
+  --text-display: var(--fw-black) var(--fs-display-l)/var(--lh-tight) var(--font-display);
+  --text-h1: var(--fw-bold) var(--fs-h1)/var(--lh-snug) var(--font-display);
+  --text-h2: var(--fw-bold) var(--fs-h2)/var(--lh-snug) var(--font-display);
+  --text-h3: var(--fw-semibold) var(--fs-h3)/var(--lh-snug) var(--font-display);
+  --text-body: var(--fw-regular) var(--fs-body)/var(--lh-body) var(--font-body);
+  --text-body-s: var(--fw-regular) var(--fs-body-s)/var(--lh-body) var(--font-body);
+  --text-label: var(--fw-semibold) var(--fs-label)/1 var(--font-body);
+  --text-data: var(--fw-medium) var(--fs-body)/1.2 var(--font-mono);
+}

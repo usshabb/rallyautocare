@@ -1,0 +1,37 @@
+{
+  "name": "rallyautocare",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "tsx scripts/migrate.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:reset": "rm -rf data && tsx scripts/migrate.ts",
+    "check": "tsx scripts/check-booking.ts",
+    "stripe:listen": "node --env-file=.env.local scripts/stripe-listen.mjs",
+    "stripe:setup": "tsx --env-file=.env.local scripts/stripe-setup.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.53.0",
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "stripe": "^23.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@stripe/cli": "^1.53.1",
+    "@types/node": "^24.19.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3"
+  }
+}
