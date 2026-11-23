@@ -81,6 +81,9 @@ export const fmtRange = (start: number, minutes: number) => `${fmtTime(start)} â
 const stampFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric', year: 'numeric' });
 /** Formats a stored epoch-ms timestamp as a local calendar date. */
 export const fmtStamp = (ms: number | null | undefined) => (ms ? stampFmt.format(new Date(ms)) : 'â€”');
+const stampTimeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+/** "Oct 21, 3:05 PM" */
+export const fmtStampTime = (ms: number) => stampTimeFmt.format(new Date(ms));
 
 /** True when (date, minutes) is strictly before the current local time. */
 export function isPast(date: string, minutes: number): boolean {

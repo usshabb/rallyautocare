@@ -1,19 +1,19 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1791513854102,
-      "tag": "0000_outgoing_phil_sheldon",
+      "version": "7",
+      "when": 1791942263393,
+      "tag": "0000_married_lethal_legion",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "6",
-      "when": 1791515533073,
-      "tag": "0001_fuzzy_vulcan",
+      "version": "7",
+      "when": 1792625016225,
+      "tag": "0001_marvelous_vertigo",
       "breakpoints": true
     }
   ]

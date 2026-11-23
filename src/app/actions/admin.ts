@@ -1,14 +1,17 @@
 'use server';
 
 import { eq } from 'drizzle-orm';
+import { after } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { activateMembership, addCharge, markChargeDue, markChargePaid, updateCharge, voidCharge } from '@/lib/billing';
-import { completeBooking, markNoShow } from '@/lib/bookings';
+import { applyDayOrder, completeBooking, markNoShow, rescheduleBooking } from '@/lib/bookings';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { blocks, bookings, charges, leads, users } from '@/lib/db/schema';
 import { DomainError } from '@/lib/errors';
+import { geocode } from '@/lib/geo';
 import { newId } from '@/lib/ids';
+import { notifyBooking } from '@/lib/notify';
 import { releaseCharge } from '@/lib/stripe';
 import { isDate } from '@/lib/time';
 import { cents, run, str, type ActionState } from './result';
@@ -123,5 +126,54 @@ export async function setLeadStatus(_prev: ActionState, form: FormData): Promise
     const status = str(form, 'status');
     if (status !== 'new' && status !== 'contacted' && status !== 'closed') throw new DomainError('Unknown status.');
     await db.update(leads).set({ status }).where(eq(leads.id, str(form, 'leadId')));
+  });
+}
+
+/** Puts a day's jobs in the shorter driving order the route page proposed, and texts each moved client. */
+export async function applyRoute(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return asAdmin(async () => {
+    let moves: { id: string; from: number; to: number }[];
+    try {
+      moves = JSON.parse(str(form, 'moves'));
+    } catch {
+      throw new DomainError('Reload the page and try again.');
+    }
+    const changed = await applyDayOrder(str(form, 'date'), moves);
+    after(async () => {
+      for (const b of changed) await notifyBooking(b.id, 'rescheduled');
+    });
+  });
+}
+
+/** Moves a job to another day (a suggestion from the route page) and texts the client the new time. */
+export async function moveJob(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return asAdmin(async () => {
+    const user = (await currentUser())!;
+    const b = await rescheduleBooking(str(form, 'bookingId'), str(form, 'date'), Number(str(form, 'startMin')), { userId: user.id, admin: true });
+    after(() => notifyBooking(b.id, 'rescheduled'));
+  });
+}
+
+/** "On my way": texts the client how far out the crew is. */
+export async function sendEta(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return asAdmin(async () => {
+    const minutes = Number(str(form, 'minutes'));
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 240) throw new DomainError('Enter the minutes until you arrive.');
+    const [b] = await db.select().from(bookings).where(eq(bookings.id, str(form, 'bookingId')));
+    if (!b || b.status !== 'confirmed') throw new DomainError('That job is not open.');
+    const sent = await notifyBooking(b.id, 'eta', { etaMin: Math.round(minutes) });
+    if (!sent) throw new DomainError('The text could not be recorded. Try again.');
+    if (sent.status === 'failed') throw new DomainError(`The text didn't go through: ${sent.error}`);
+  });
+}
+
+/** Looks a job's address up on the map again (e.g. after the geocoder was down). */
+export async function locateJob(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return asAdmin(async () => {
+    const [b] = await db.select().from(bookings).where(eq(bookings.id, str(form, 'bookingId')));
+    if (!b) throw new DomainError('Booking not found.');
+    const place = await geocode(b.address, { retry: true, timeoutMs: 8000 });
+    if (!place) throw new DomainError('We still can’t find that address on the map. Check it with the client.');
+    await db.update(bookings).set({ lat: place.lat, lng: place.lng, area: place.area || null }).where(eq(bookings.id, b.id));
   });
 }

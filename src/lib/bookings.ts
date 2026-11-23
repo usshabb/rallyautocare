@@ -1,12 +1,29 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
-import { db, type Tx } from './db';
+import { db, isConflict, lockSchedule, type Tx } from './db';
 import { bookings, charges, memberships, vehicles, type Booking, type Vehicle } from './db/schema';
 import { findAddon, findPlan, planMonthly, priceVisit, serviceInfo, type BookingKind, type Size } from './catalog';
 import { SCHEDULE, slotProblem } from './availability';
+import type { Place } from './geo';
 import { activateMembership, visitsInPeriod } from './billing';
 import { DomainError } from './errors';
 import { bookingCode, newId } from './ids';
 import { hoursUntil, isDate, today } from './time';
+
+/**
+ * Runs a change to the calendar one at a time (see lockSchedule). If the database still refuses the
+ * write — its own no-overlap rule is the last line of defence — that reads as "someone got there first".
+ */
+async function onSchedule<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  try {
+    return await db.transaction(async (tx) => {
+      await lockSchedule(tx);
+      return fn(tx);
+    });
+  } catch (err) {
+    if (isConflict(err)) throw new DomainError('That time was just taken. Pick another one.');
+    throw err;
+  }
+}
 
 export type VehicleChoice = { vehicleId?: string; label?: string; size: Size };
 
@@ -19,6 +36,8 @@ export type BookingRequest = {
   address: string;
   notes?: string;
   createdBy: 'customer' | 'admin';
+  /** Where the address is on the map, looked up before the booking is made. Optional: routing only. */
+  place?: Place | null;
 };
 
 /** Uses a saved vehicle (which must belong to the user) or saves a new one. */
@@ -41,7 +60,7 @@ async function resolveVehicle(tx: Tx, userId: string, choice: VehicleChoice): Pr
 
 async function insertBooking(
   tx: Tx,
-  input: { userId: string; vehicle: Vehicle; membershipId?: string; kind: BookingKind; serviceId: string } & Pick<BookingRequest, 'addonIds' | 'date' | 'startMin' | 'address' | 'notes' | 'createdBy'>,
+  input: { userId: string; vehicle: Vehicle; membershipId?: string; kind: BookingKind; serviceId: string } & Pick<BookingRequest, 'addonIds' | 'date' | 'startMin' | 'address' | 'notes' | 'createdBy' | 'place'>,
 ): Promise<Booking> {
   const info = serviceInfo(input.kind, input.serviceId);
   const price = priceVisit({ kind: input.kind, serviceId: input.serviceId, size: input.vehicle.size, addonIds: input.addonIds });
@@ -75,6 +94,9 @@ async function insertBooking(
       notes: (input.notes ?? '').trim().slice(0, 500),
       estimateCents: price.total,
       createdBy: input.createdBy,
+      lat: input.place?.lat ?? null,
+      lng: input.place?.lng ?? null,
+      area: input.place?.area || null,
     })
     .returning();
   return row;
@@ -82,7 +104,7 @@ async function insertBooking(
 
 /** Books a one-time detail. */
 export async function bookDetail(req: BookingRequest & { serviceId: string }): Promise<Booking> {
-  return db.transaction(async (tx) => {
+  return onSchedule(async (tx) => {
     const vehicle = await resolveVehicle(tx, req.userId, req.vehicle);
     return insertBooking(tx, { ...req, vehicle, kind: 'detail' });
   });
@@ -91,7 +113,7 @@ export async function bookDetail(req: BookingRequest & { serviceId: string }): P
 /** Starts a membership: one vehicle on one plan, pending until its initial detail is done. */
 export async function joinMembership(req: BookingRequest & { planId: string }): Promise<Booking> {
   if (!findPlan(req.planId)) throw new DomainError('That plan is not available.');
-  return db.transaction(async (tx) => {
+  return onSchedule(async (tx) => {
     const vehicle = await resolveVehicle(tx, req.userId, req.vehicle);
     const [live] = await tx.select().from(memberships).where(and(eq(memberships.vehicleId, vehicle.id), ne(memberships.status, 'cancelled')));
     if (live) throw new DomainError('That vehicle is already on a membership. Manage it from your account.');
@@ -105,7 +127,7 @@ export async function joinMembership(req: BookingRequest & { planId: string }): 
 
 /** Schedules the next thing a membership needs: its initial detail while pending, otherwise an included visit. */
 export async function bookMembershipVisit(req: Omit<BookingRequest, 'vehicle'> & { membershipId: string; admin?: boolean }): Promise<Booking> {
-  return db.transaction(async (tx) => {
+  return onSchedule(async (tx) => {
     const [m] = await tx.select().from(memberships).where(eq(memberships.id, req.membershipId));
     if (!m || (!req.admin && m.userId !== req.userId) || m.status === 'cancelled') throw new DomainError('Membership not found.');
     const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, m.vehicleId));
@@ -142,7 +164,7 @@ export const canSelfServe = (b: Pick<Booking, 'status' | 'date' | 'startMin'>) =
   b.status === 'confirmed' && hoursUntil(b.date, b.startMin) >= SCHEDULE.cancelCutoffHours;
 
 export async function rescheduleBooking(bookingId: string, date: string, startMin: number, actor: Actor): Promise<Booking> {
-  return db.transaction(async (tx) => {
+  return onSchedule(async (tx) => {
     const b = await loadOwned(tx, bookingId, actor);
     if (b.status !== 'confirmed') throw new DomainError('Only upcoming bookings can be moved.');
     if (!actor.admin && !canSelfServe(b)) throw new DomainError(`It's within ${SCHEDULE.cancelCutoffHours} hours of your appointment — call us to make changes.`);
@@ -156,6 +178,34 @@ export async function rescheduleBooking(bookingId: string, date: string, startMi
     }
     const [row] = await tx.update(bookings).set({ date, startMin }).where(eq(bookings.id, b.id)).returning();
     return row;
+  });
+}
+
+/**
+ * Gives one day's jobs new arrival times, all at once (a shorter driving order from routes.ts).
+ * `expected` is each job's time when the admin looked; if anything on the day has changed since,
+ * nothing is moved. Every new time passes the same overlap check as any other booking.
+ * Returns the jobs whose time changed.
+ */
+export async function applyDayOrder(date: string, moves: { id: string; from: number; to: number }[]): Promise<Booking[]> {
+  if (!isDate(date) || !moves.length) throw new DomainError('Nothing to change.');
+  return onSchedule(async (tx) => {
+    const day = await tx.select().from(bookings).where(and(eq(bookings.date, date), eq(bookings.status, 'confirmed')));
+    const stale = moves.length !== day.length || moves.some((m) => day.find((b) => b.id === m.id)?.startMin !== m.from);
+    if (stale) throw new DomainError('This day changed since the route was worked out. Reload and try again.');
+
+    // Take the day's jobs off the calendar, then put each back at its new time. (The database's
+    // no-overlap rule is checked row by row, so moving them one at a time could trip over each other.)
+    await tx.update(bookings).set({ status: 'cancelled' }).where(inArray(bookings.id, moves.map((m) => m.id)));
+    const changed: Booking[] = [];
+    for (const m of [...moves].sort((a, b) => a.to - b.to)) {
+      const b = day.find((x) => x.id === m.id)!;
+      const problem = await slotProblem(tx, { date, start: m.to, minutes: b.durationMin, admin: true });
+      if (problem) throw new DomainError(`${b.code} can't go at that time: ${problem}`);
+      const [row] = await tx.update(bookings).set({ status: 'confirmed', startMin: m.to }).where(eq(bookings.id, b.id)).returning();
+      if (m.to !== m.from) changed.push(row);
+    }
+    return changed;
   });
 }
 

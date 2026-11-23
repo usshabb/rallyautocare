@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { bypassCode, currentUser } from '@/lib/auth';
+import { currentUser, visibleTestCode } from '@/lib/auth';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
@@ -24,7 +24,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </h1>
           {!unfinished && <p className="small muted">Sign in with your mobile number to manage bookings, your membership and payments. New here? This creates your account.</p>}
         </div>
-        <LoginForm next={safeNext} testCode={bypassCode()} finish={unfinished && user ? { name: user.name, email: user.email } : undefined} />
+        <LoginForm next={safeNext} testCode={visibleTestCode()} finish={unfinished && user ? { name: user.name, email: user.email } : undefined} />
       </div>
     </section>
   );

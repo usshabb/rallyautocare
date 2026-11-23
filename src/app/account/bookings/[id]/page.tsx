@@ -8,7 +8,7 @@ import { ConfirmAction } from '@/components/ui/Dialog';
 import { requireUser } from '@/lib/auth';
 import { SCHEDULE } from '@/lib/availability';
 import { canSelfServe } from '@/lib/bookings';
-import { BUSINESS, findAddon, priceVisit, sizeLabel, usd } from '@/lib/catalog';
+import { BUSINESS, findAddon, PREP_NOTE, PREP_STEPS, priceVisit, sizeLabel, usd } from '@/lib/catalog';
 import { getBooking } from '@/lib/queries';
 import { fmtDateLong, fmtRange } from '@/lib/time';
 
@@ -95,6 +95,18 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
                   .
                 </p>
               )}
+            </div>
+          )}
+
+          {b.status === 'confirmed' && (
+            <div className="rly-card rly-card--striped stack g-3" style={{ paddingTop: 32 }}>
+              <h2 className="h3">Before we arrive</h2>
+              <ul className="prep">
+                {PREP_STEPS.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+              <p className="note">{PREP_NOTE} We’ll text you a reminder the evening before, and again when we’re on the way.</p>
             </div>
           )}
         </div>

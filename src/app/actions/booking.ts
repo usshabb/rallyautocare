@@ -2,12 +2,15 @@
 
 import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { z } from 'zod';
 import { currentUser, findOrCreateUser, startSession, verifyOtp } from '@/lib/auth';
 import { bookDetail, bookMembershipVisit, cancelBooking, joinMembership, rescheduleBooking } from '@/lib/bookings';
 import { db } from '@/lib/db';
-import { users, type Booking } from '@/lib/db/schema';
+import { bookings, users, type Booking } from '@/lib/db/schema';
 import { DomainError } from '@/lib/errors';
+import { geocode } from '@/lib/geo';
+import { notifyBooking } from '@/lib/notify';
 import { isEmail, normalizePhone } from '@/lib/phone';
 import { run, type ActionState } from './result';
 
@@ -71,6 +74,7 @@ export async function submitBooking(raw: z.input<typeof bookingInput>): Promise<
     }
 
     const request = {
+      place: await geocode(input.address),
       userId: customerId,
       vehicle: { vehicleId: input.vehicleId, label: input.vehicleLabel, size: input.size },
       addonIds: input.addonIds,
@@ -89,6 +93,7 @@ export async function submitBooking(raw: z.input<typeof bookingInput>): Promise<
     if (!customer.address) patch.address = booking.address;
     if (Object.keys(patch).length) await db.update(users).set(patch).where(eq(users.id, customerId));
 
+    after(() => notifyBooking(booking.id, 'confirmation'));
     revalidatePath('/', 'layout');
     return done(booking);
   } catch (err) {
@@ -110,7 +115,9 @@ export async function scheduleVisit(raw: z.input<typeof visitInput>): Promise<Bo
   const parsed = visitInput.safeParse(raw);
   if (!user || !parsed.success) return { ok: false, error: 'Something in the form is missing. Check it and try again.' };
   try {
-    const booking = await bookMembershipVisit({ ...parsed.data, userId: user.id, admin: user.isAdmin, createdBy: user.isAdmin ? 'admin' : 'customer' });
+    const place = await geocode(parsed.data.address);
+    const booking = await bookMembershipVisit({ ...parsed.data, place, userId: user.id, admin: user.isAdmin, createdBy: user.isAdmin ? 'admin' : 'customer' });
+    after(() => notifyBooking(booking.id, 'confirmation'));
     revalidatePath('/', 'layout');
     return done(booking);
   } catch (err) {
@@ -124,7 +131,9 @@ export async function reschedule(raw: { bookingId: string; date: string; startMi
   const parsed = z.object({ bookingId: z.string(), ...slot }).safeParse(raw);
   if (!user || !parsed.success) return { ok: false, error: 'Pick a day and time.' };
   try {
+    const [before] = await db.select({ date: bookings.date, startMin: bookings.startMin }).from(bookings).where(eq(bookings.id, parsed.data.bookingId));
     const b = await rescheduleBooking(parsed.data.bookingId, parsed.data.date, parsed.data.startMin, { userId: user.id, admin: user.isAdmin });
+    if (before && (before.date !== b.date || before.startMin !== b.startMin)) after(() => notifyBooking(b.id, 'rescheduled'));
     revalidatePath('/', 'layout');
     return done(b);
   } catch (err) {
@@ -136,5 +145,9 @@ export async function reschedule(raw: { bookingId: string; date: string; startMi
 export async function cancel(_prev: ActionState, form: FormData): Promise<ActionState> {
   const user = await currentUser();
   if (!user) return { error: 'Sign in again to continue.' };
-  return run(() => cancelBooking(String(form.get('bookingId')), { userId: user.id, admin: user.isAdmin }));
+  const bookingId = String(form.get('bookingId'));
+  const [before] = await db.select({ status: bookings.status }).from(bookings).where(eq(bookings.id, bookingId));
+  const result = await run(() => cancelBooking(bookingId, { userId: user.id, admin: user.isAdmin }));
+  if (result.ok && before?.status === 'confirmed') after(() => notifyBooking(bookingId, 'cancelled'));
+  return result;
 }

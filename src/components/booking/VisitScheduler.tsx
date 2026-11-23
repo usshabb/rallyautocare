@@ -48,9 +48,14 @@ export function VisitScheduler({ membershipId, planId, pending: isPending, addre
 
   return (
     <div className="stack g-5" style={{ paddingTop: 20, borderTop: '1px solid var(--border-2)' }}>
+      <label className="rly-field">
+        <span className="rly-field__label">Service address</span>
+        <input className="rly-input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city, ZIP" autoComplete="street-address" />
+      </label>
       <SchedulePicker
         kind={isPending ? 'initial' : 'visit'}
         serviceId={planId}
+        address={address}
         date={date}
         startMin={startMin}
         onChange={(d, s) => {
@@ -58,10 +63,6 @@ export function VisitScheduler({ membershipId, planId, pending: isPending, addre
           setStartMin(s);
         }}
       />
-      <label className="rly-field">
-        <span className="rly-field__label">Service address</span>
-        <input className="rly-input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city, ZIP" autoComplete="street-address" />
-      </label>
       <div className="stack" style={{ gap: 2 }}>
         <span className="rly-field__label" style={{ marginBottom: 6 }}>
           Add-ons · optional

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import { sendCode } from '@/app/actions/auth';
 import { submitBooking } from '@/app/actions/booking';
-import { ADDONS, BUSINESS, DETAILS, INITIAL_DETAIL, PLANS, planMonthly, priceVisit, usd, type Size } from '@/lib/catalog';
+import { ADDONS, BUSINESS, DETAILS, INITIAL_DETAIL, PLANS, PREP_NOTE, PREP_STEPS, planMonthly, priceVisit, usd, type Size } from '@/lib/catalog';
 import { formatPhone, isEmail } from '@/lib/phone';
 import { fmtDateLong, fmtTime } from '@/lib/time';
 import { Dialog } from '../ui/Dialog';
@@ -31,8 +31,11 @@ const defaultService = (mode: Mode) => (mode === 'member' ? 'plus' : 'full');
 
 export function BookingPanel({ customer, initial, admin = false, testCode = null }: Props) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>(initial?.mode ?? 'detail');
-  const [serviceId, setServiceId] = useState(initial?.serviceId ?? defaultService(initial?.mode ?? 'detail'));
+  // Customers start on membership: it's what the business wants more of, and one-time is one tap away.
+  // The crew booking for someone starts on one-time, so nobody is put on a plan by accident.
+  const startMode: Mode = initial?.mode ?? (admin ? 'detail' : 'member');
+  const [mode, setMode] = useState<Mode>(startMode);
+  const [serviceId, setServiceId] = useState(initial?.serviceId ?? defaultService(startMode));
   const [size, setSize] = useState<Size>(customer?.vehicles[0]?.size ?? 'car');
   const [addons, setAddons] = useState<string[]>([]);
   const [date, setDate] = useState<string | null>(null);
@@ -166,11 +169,11 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
     <div className="cards cards--2">
       <div className="panel">
         <div className="rly-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={!member} className={'rly-tab' + (!member ? ' rly-tab--active' : '')} onClick={() => switchMode('detail')}>
-            One-time
-          </button>
           <button type="button" role="tab" aria-selected={member} className={'rly-tab' + (member ? ' rly-tab--active' : '')} onClick={() => switchMode('member')}>
             Membership
+          </button>
+          <button type="button" role="tab" aria-selected={!member} className={'rly-tab' + (!member ? ' rly-tab--active' : '')} onClick={() => switchMode('detail')}>
+            One-time
           </button>
         </div>
 
@@ -178,13 +181,22 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
           <span className="rly-field__label">{member ? 'Plan' : 'Service'}</span>
           {list.map((s) => {
             const on = s.id === service.id;
+            const plan = member ? PLANS.find((p) => p.id === s.id) : undefined;
+            const save = plan ? plan.regularValue - plan.price : 0;
             return (
               <button key={s.id} type="button" aria-pressed={on} aria-label={`${s.name}, ${usd(s.price + (suv ? 2000 : 0))}${per}`} className={'option' + (on ? ' option--on' : '')} onClick={() => setServiceId(s.id)}>
                 <span>
                   <span className="option__name">
                     <span className={'rly-radio__dot' + (on ? ' rly-radio__dot--on' : '')} />
                     {s.name}
+                    {plan?.badge && <span className="rly-badge rly-badge--accent">{plan.badge}</span>}
                   </span>
+                  {plan && (
+                    <span className="option__sub" style={{ paddingLeft: 30 }}>
+                      {plan.note}
+                      {save > 0 ? ` · save ${usd(save)} on regular value` : ''}
+                    </span>
+                  )}
                 </span>
                 <span className="rly-data" style={{ fontSize: 15 }}>
                   {usd(s.price + (suv ? 2000 : 0))}
@@ -207,6 +219,21 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
           </div>
           {saved && <span className="note">Set by the saved vehicle: {saved.label}.</span>}
         </div>
+
+        {!member && (
+          <div className="nudge">
+            <span className="rly-label" style={{ color: 'var(--accent)' }}>
+              Make it monthly
+            </span>
+            <span className="nudge__title">Keep it this clean every month with a membership.</span>
+            <span className="small muted">
+              {PLANS.map((p) => `${p.name} ${usd(p.price)}/mo (${p.note.toLowerCase()})`).join(' · ')}. Starts with an initial detail from {usd(INITIAL_DETAIL.price)}. No contract.
+            </span>
+            <button type="button" className="rly-btn rly-btn--secondary rly-btn--sm" onClick={() => switchMode('member')}>
+              See membership plans
+            </button>
+          </div>
+        )}
 
         {member && (
           <div className="rly-card rly-card--striped stack g-2">
@@ -236,6 +263,11 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
       </div>
 
       <div className="panel panel--tight">
+        <label className="rly-field">
+          <span className="rly-field__label">Service address</span>
+          <input className="rly-input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city, ZIP" autoComplete="street-address" />
+          <span className="rly-field__hint">We bring our own water and power. Just leave room to walk around the car. Your address also shows which days we’re already nearby.</span>
+        </label>
         <SchedulePicker
           kind={kind}
           serviceId={service.id}
@@ -243,6 +275,7 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
           date={date}
           startMin={startMin}
           reloadKey={reloadKey}
+          address={address}
           onChange={(d, s) => {
             setDate(d);
             setStartMin(s);
@@ -270,11 +303,6 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
             <input className="rly-input" value={vehicleLabel} onChange={(e) => setVehicleLabel(e.target.value)} placeholder="Year, make, model" autoComplete="off" />
           </label>
         )}
-        <label className="rly-field">
-          <span className="rly-field__label">Service address</span>
-          <input className="rly-input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, city, ZIP" autoComplete="street-address" />
-          <span className="rly-field__hint">We bring our own water and power. Just leave room to walk around the car.</span>
-        </label>
         {needsIdentity && (
           <>
             <div className="form-grid">
@@ -380,6 +408,11 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
         <button type="button" className={'rly-btn rly-btn--primary rly-btn--lg rly-btn--block' + (ready ? '' : ' rly-btn--disabled')} disabled={!ready || pending} onClick={onConfirm}>
           {cta}
         </button>
+        <span className="note">
+          {admin
+            ? 'The client gets a text confirming the booking, a reminder the evening before, and your ETA when you send it.'
+            : 'We’ll text your confirmation, a reminder the evening before, and our ETA on the day. Msg & data rates may apply. Reply STOP to opt out.'}
+        </span>
       </div>
 
       {verifying && (
@@ -435,6 +468,23 @@ export function BookingPanel({ customer, initial, admin = false, testCode = null
             {done.member ? `Your initial detail for ${done.service}` : done.service} on {fmtDateLong(done.date)} at {fmtTime(done.startMin)}.{' '}
             {done.member ? 'Your membership starts once that visit is done. ' : ''}Need to change something? Manage it from your account or call {BUSINESS.phone}.
           </p>
+          <div className="stack g-2" style={{ marginBottom: 16 }}>
+            <span className="rly-label">Before we arrive</span>
+            <ul className="prep">
+              {PREP_STEPS.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+            <span className="note">{PREP_NOTE}</span>
+          </div>
+          {!done.member && !admin && (
+            <p className="small" style={{ marginBottom: 16 }}>
+              Want it this clean every month? Memberships start at {usd(Math.min(...PLANS.map((p) => p.price)))}/mo.{' '}
+              <Link href="/pricing#memberships" className="link">
+                See plans
+              </Link>
+            </p>
+          )}
           <span className="rly-data tiny muted">BOOKING {done.code}</span>
         </Dialog>
       )}

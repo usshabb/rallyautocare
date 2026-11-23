@@ -16,7 +16,7 @@ async function main() {
         ? `Sales tax: switched on but NOT collecting (tax settings ${tax.settingsActive ? 'active' : 'pending — no head office address'}, ${tax.registrations} registration(s))`
         : 'Sales tax: off (STRIPE_AUTOMATIC_TAX is not on)',
   );
-  client.close();
+  await client.end();
 }
 
 main().catch((err) => {

@@ -9,6 +9,7 @@ export const metadata: Metadata = { title: { default: 'Admin', template: '%s · 
 
 const TABS = [
   { href: '/admin', label: 'Schedule' },
+  { href: '/admin/routes', label: 'Routes' },
   { href: '/admin/bookings', label: 'Bookings' },
   { href: '/admin/clients', label: 'Clients' },
   { href: '/admin/memberships', label: 'Memberships' },

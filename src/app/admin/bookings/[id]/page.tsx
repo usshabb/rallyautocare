@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { completeJob, noShow, requestCharge, saveJobNotes } from '@/app/actions/admin';
+import { and, eq } from 'drizzle-orm';
+import { completeJob, locateJob, noShow, requestCharge, saveJobNotes, sendEta } from '@/app/actions/admin';
 import { cancel } from '@/app/actions/booking';
 import { ChargeAdmin } from '@/components/app/ChargeAdmin';
 import { PageHead } from '@/components/app/PageHead';
@@ -12,8 +13,14 @@ import { requireAdmin } from '@/lib/auth';
 import { stripeEnabled } from '@/lib/stripe';
 import { findAddon, priceVisit, sizeLabel, usd } from '@/lib/catalog';
 import { formatPhone } from '@/lib/phone';
-import { getBooking } from '@/lib/queries';
-import { fmtDateLong, fmtRange, fmtStamp, today } from '@/lib/time';
+import { bookings } from '@/lib/db/schema';
+import { driveMinutes, pointOf } from '@/lib/geo';
+import { listMessages, smsConnected } from '@/lib/notify';
+import { getBooking, listBookings } from '@/lib/queries';
+import { fmtDateLong, fmtRange, fmtStamp, fmtStampTime, fmtTime, today } from '@/lib/time';
+
+const KIND_LABEL = { confirmation: 'Confirmation', reminder: 'Reminder', eta: 'On the way', rescheduled: 'New time', cancelled: 'Cancelled' } as const;
+const STATUS_LABEL = { pending: 'Sending', sent: 'Sent', logged: 'Not delivered — no SMS provider yet', failed: 'Failed' } as const;
 
 export default async function AdminBookingPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -22,6 +29,13 @@ export default async function AdminBookingPage({ params }: { params: Promise<{ i
   if (!b) notFound();
   const price = priceVisit({ kind: b.kind, serviceId: b.serviceId, size: b.size, addonIds: b.addons });
   const happened = b.date <= today();
+  const isToday = b.date === today();
+  const [texts, sameDay] = await Promise.all([listMessages([b.id]), isToday ? listBookings(and(eq(bookings.date, b.date), eq(bookings.status, 'confirmed'))) : Promise.resolve([])]);
+  // Once this job is done, the next one today is where the van goes: offer its client an ETA.
+  const next = b.status === 'completed' ? sameDay.filter((x) => x.startMin > b.startMin).sort((x, y) => x.startMin - y.startMin)[0] : undefined;
+  const here = pointOf(b);
+  const nextDrive = next && here && pointOf(next) ? driveMinutes(here, pointOf(next)!) : 15;
+  const etaSaved = smsConnected() ? 'ETA sent.' : 'ETA recorded below, but not delivered: no SMS provider is connected yet.';
 
   return (
     <>
@@ -58,9 +72,27 @@ export default async function AdminBookingPage({ params }: { params: Promise<{ i
               </div>
               <div className="fact">
                 <span className="rly-label">Where</span>
-                <a href={`https://maps.apple.com/?q=${encodeURIComponent(b.address)}`} target="_blank" rel="noreferrer" className="link">
-                  {b.address}
-                </a>
+                <span>
+                  <a href={`https://maps.apple.com/?q=${encodeURIComponent(b.address)}`} target="_blank" rel="noreferrer" className="link">
+                    {b.address}
+                  </a>
+                  <br />
+                  {here ? (
+                    <Link href={`/admin/routes?date=${b.date}`} className="small link">
+                      {b.area || 'On the map'} · see the day’s route
+                    </Link>
+                  ) : (
+                    <ActionForm action={locateJob} className="inline-form">
+                      <input type="hidden" name="bookingId" value={b.id} />
+                      <span className="small" style={{ color: 'var(--warning)' }}>
+                        Not on the map, so it isn’t in route planning.
+                      </span>
+                      <Submit className="link small" pending="Looking…">
+                        Find again
+                      </Submit>
+                    </ActionForm>
+                  )}
+                </span>
               </div>
               <div className="fact">
                 <span className="rly-label">Vehicle</span>
@@ -88,6 +120,42 @@ export default async function AdminBookingPage({ params }: { params: Promise<{ i
               </div>
             </div>
           </div>
+
+          {next && (
+            <div className="rly-card rly-card--striped stack g-4" style={{ paddingTop: 32 }}>
+              <h2 className="h3">Next stop: {next.customerName || formatPhone(next.customerPhone)}</h2>
+              <p className="small muted">
+                {fmtTime(next.startMin)} · {next.serviceName} · {next.address}
+              </p>
+              <ActionForm action={sendEta} className="inline-form" saved={etaSaved}>
+                <input type="hidden" name="bookingId" value={next.id} />
+                <label className="rly-field" style={{ maxWidth: 140 }}>
+                  <span className="rly-field__label">Minutes away</span>
+                  <input className="rly-input rly-data" name="minutes" defaultValue={nextDrive} inputMode="numeric" />
+                </label>
+                <Submit className="rly-btn rly-btn--primary" pending="Sending…">
+                  Text them we’re on the way
+                </Submit>
+              </ActionForm>
+              <p className="note">The minutes start at the estimated drive from this job. The text asks them to have the car open and cleared out.</p>
+            </div>
+          )}
+
+          {b.status === 'confirmed' && isToday && (
+            <div className="rly-card stack g-4">
+              <h2 className="h3">On the way?</h2>
+              <ActionForm action={sendEta} className="inline-form" saved={etaSaved}>
+                <input type="hidden" name="bookingId" value={b.id} />
+                <label className="rly-field" style={{ maxWidth: 140 }}>
+                  <span className="rly-field__label">Minutes away</span>
+                  <input className="rly-input rly-data" name="minutes" defaultValue={15} inputMode="numeric" />
+                </label>
+                <Submit className="rly-btn rly-btn--secondary" pending="Sending…">
+                  Text ETA
+                </Submit>
+              </ActionForm>
+            </div>
+          )}
 
           {b.status === 'confirmed' && (
             <div className="rly-card stack g-5">
@@ -124,7 +192,7 @@ export default async function AdminBookingPage({ params }: { params: Promise<{ i
                   label="Cancel booking"
                   className="rly-btn rly-btn--sm btn-danger"
                   title="Cancel this booking?"
-                  text={`${b.serviceName} for ${b.customerName || formatPhone(b.customerPhone)} on ${fmtDateLong(b.date)}. Any unpaid deposit is voided. The client is not notified automatically.`}
+                  text={`${b.serviceName} for ${b.customerName || formatPhone(b.customerPhone)} on ${fmtDateLong(b.date)}. Any unpaid deposit is voided. The client gets a text that it's cancelled.`}
                   confirmLabel="Cancel booking"
                 />
               </div>
@@ -176,6 +244,31 @@ export default async function AdminBookingPage({ params }: { params: Promise<{ i
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="rly-card stack g-3">
+            <div className="card-title" style={{ marginBottom: 0 }}>
+              <h2 className="h3">Texts to the client</h2>
+            </div>
+            {texts.length === 0 ? (
+              <p className="small muted">None yet.</p>
+            ) : (
+              texts.map((m) => (
+                <details key={m.id} className="small">
+                  <summary style={{ cursor: 'pointer' }}>
+                    <span className="strong">{KIND_LABEL[m.kind]}</span> · {fmtStampTime(m.createdAt)} ·{' '}
+                    <span style={{ color: m.status === 'sent' ? 'var(--success)' : m.status === 'failed' ? 'var(--danger)' : 'var(--fg-2)' }}>
+                      {STATUS_LABEL[m.status]}
+                      {m.error ? `: ${m.error}` : ''}
+                    </span>
+                  </summary>
+                  <p className="note" style={{ marginTop: 6 }}>
+                    {m.body}
+                  </p>
+                </details>
+              ))
+            )}
+            {!smsConnected() && <p className="note">Texts are recorded here but not delivered until an SMS provider is connected.</p>}
           </div>
 
           <ActionForm action={saveJobNotes} className="rly-card stack g-3" saved="Saved.">

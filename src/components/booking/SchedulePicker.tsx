@@ -16,10 +16,24 @@ type Props = {
   onChange: (date: string, startMin: number | null) => void;
   /** Bump to re-check availability, e.g. after a booking is made. */
   reloadKey?: number;
+  /** Where the job will be. Days the crew is already nearby get marked. */
+  address?: string;
 };
 
+/** Only look an address up once it looks finished, and once typing pauses. */
+function useSettled(address: string): string {
+  const ready = /\d/.test(address) && address.trim().length >= 10 ? address.trim() : '';
+  const [settled, setSettled] = useState(ready);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(ready), 700);
+    return () => clearTimeout(t);
+  }, [ready]);
+  return settled;
+}
+
 /** Day strip + arrival times. Availability comes from the server and accounts for job length, so nothing overlaps. */
-export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin, onChange, reloadKey = 0 }: Props) {
+export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin, onChange, reloadKey = 0, address = '' }: Props) {
+  const place = useSettled(address);
   const [days, setDays] = useState<Day[] | null>(null);
   const [duration, setDuration] = useState('');
   const [failed, setFailed] = useState(false);
@@ -31,10 +45,11 @@ export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin
   useEffect(() => {
     let live = true;
     setFailed(false);
-    const q = new URLSearchParams({ kind, service: serviceId });
-    if (exclude) q.set('exclude', exclude);
-    if (admin) q.set('admin', '1');
-    fetch(`/api/availability?${q}`)
+    fetch('/api/availability', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, service: serviceId, exclude, admin, address: place || undefined }),
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('unavailable'))))
       .then((data: { days: Day[]; duration: string }) => {
         if (!live) return;
@@ -53,10 +68,11 @@ export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin
     return () => {
       live = false;
     };
-  }, [kind, serviceId, exclude, admin, reloadKey]);
+  }, [kind, serviceId, exclude, admin, reloadKey, place]);
 
   const active = days?.find((d) => d.date === date) ?? null;
   const shown = admin ? active?.slots.filter((s) => s.state === 'open' || s.start === startMin) : active?.slots;
+  const anyNearby = !!days?.some((d) => d.nearby);
 
   return (
     <div className="stack g-3">
@@ -72,13 +88,14 @@ export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin
                 type="button"
                 role="option"
                 aria-selected={d.date === date}
-                aria-label={fmtDateLong(d.date) + (d.open === 0 ? ', no open times' : '')}
+                aria-label={fmtDateLong(d.date) + (d.open === 0 ? ', no open times' : d.nearby ? (admin ? ', crew nearby' : ', our crew is nearby') : '')}
                 disabled={d.open === 0}
                 className={'rly-date' + (d.open === 0 ? ' rly-date--disabled' : d.date === date ? ' rly-date--selected' : '')}
                 onClick={() => onChange(d.date, null)}
               >
                 <span className="rly-date__dow">{d.dow}</span>
                 <span className="rly-date__num">{d.num}</span>
+                {d.nearby && <span className="rly-date__near" aria-hidden />}
               </button>
             ))
           : Array.from({ length: 7 }, (_, i) => (
@@ -110,7 +127,8 @@ export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin
               type="button"
               disabled={s.state !== 'open'}
               aria-pressed={s.start === startMin}
-              className={'rly-slot' + (s.state !== 'open' ? ' rly-slot--unavailable' : s.start === startMin ? ' rly-slot--selected' : '')}
+              aria-label={s.best ? `${s.label}, best fit with our route` : undefined}
+              className={'rly-slot' + (s.state !== 'open' ? ' rly-slot--unavailable' : s.start === startMin ? ' rly-slot--selected' : '') + (s.best && s.state === 'open' ? ' rly-slot--best' : '')}
               onClick={() => date && onChange(date, s.start)}
             >
               {s.label}
@@ -118,6 +136,14 @@ export function SchedulePicker({ kind, serviceId, exclude, admin, date, startMin
           ))
         )}
       </div>
+      {anyNearby && !failed && (
+        <p className="near-note">
+          <span className="rly-date__near" aria-hidden />
+          {admin
+            ? 'Crew already has a job within a few miles that day. The marked time adds the least driving.'
+            : 'Our crew is already working near you on these days. Picking one, and the marked time, keeps our van in your area.'}
+        </p>
+      )}
       {!admin && days && !failed && (
         <p className="note">Struck-through times are taken or too late in the day for this service{duration ? `, which takes ${duration}` : ''}.</p>
       )}

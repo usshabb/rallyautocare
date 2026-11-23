@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { after } from 'next/server';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { BookingList } from '@/components/app/BookingList';
@@ -9,7 +10,9 @@ import { usd } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { blocks, bookings, charges, leads, memberships } from '@/lib/db/schema';
 import { formatPhone } from '@/lib/phone';
+import { sendDueReminders } from '@/lib/notify';
 import { listBookings } from '@/lib/queries';
+import { areasOf } from '@/lib/routes';
 import { addDays, dayNum, dowLabel, fmtDateLong, fmtRange, fmtTime, isDate, nowLocal, weekStart } from '@/lib/time';
 
 const HOUR_PX = 64;
@@ -22,6 +25,8 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const monday = weekStart(date);
   const sunday = addDays(monday, 6);
   await syncAllMemberships();
+  // The daily cron sends reminders; opening the schedule catches up if a run was missed.
+  after(() => sendDueReminders());
 
   const [week, off, [owed], [members], [newLeads]] = await Promise.all([
     listBookings(and(gte(bookings.date, monday), lte(bookings.date, sunday))),
@@ -141,10 +146,27 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
         <div className="stack g-4">
           <div className="card-title" style={{ marginBottom: 0 }}>
             <h2 className="h3">Jobs</h2>
-            <Link href={`/admin/availability?date=${date}`} className="link small">
-              Block time
-            </Link>
+            <span className="wrap-row" style={{ gap: 16 }}>
+              {dayLive.length > 0 && (
+                <Link href={`/admin/routes?date=${date}`} className="link small">
+                  Route &amp; map
+                </Link>
+              )}
+              <Link href={`/admin/availability?date=${date}`} className="link small">
+                Block time
+              </Link>
+            </span>
           </div>
+          {dayLive.length > 0 && (
+            <div className="areas">
+              {areasOf(dayLive).map((a) => (
+                <span key={a.area} className="rly-badge rly-badge--neutral">
+                  {a.area}
+                  {a.n > 1 ? ` ×${a.n}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
           <BookingList rows={day} admin empty="Nothing booked this day." />
         </div>
       </div>

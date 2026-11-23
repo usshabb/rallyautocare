@@ -128,6 +128,14 @@ export const BUSINESS = {
   domain: 'rallyautocare.us',
 };
 
+// What clients do before the crew arrives. Shown after booking, on the booking page, and in the texts.
+export const PREP_STEPS = [
+  'Take out trash and personal items',
+  'Remove car seats and seat covers',
+  'Leave the car unlocked or the keys handy, and send us any gate code',
+];
+export const PREP_NOTE = 'Anything we have to clear out or work around adds time, and may add to the price.';
+
 // Ways the crew can record a payment by hand. Card payments through Stripe record themselves.
 export const PAYMENT_METHODS = [
   { id: 'zelle', name: 'Zelle' },

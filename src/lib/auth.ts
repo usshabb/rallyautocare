@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { eq, lt } from 'drizzle-orm';
 import { db } from './db';
 import { otpCodes, sessions, users, type User } from './db/schema';
-import { bypassCode } from './env';
+import { bypassCode, visibleTestCode } from './env';
 import { newId, newToken, otpCode, sha256 } from './ids';
 import { normalizePhone } from './phone';
 import { sendSms } from './sms';
@@ -21,7 +21,7 @@ const adminPhones = () =>
     .map((p) => normalizePhone(p))
     .filter((p): p is string => !!p);
 
-export { bypassCode };
+export { bypassCode, visibleTestCode };
 
 export const isAdminPhone = (phone: string) => adminPhones().includes(phone);
 
@@ -41,15 +41,16 @@ export async function requestOtp(phone: string): Promise<{ ok: true } | { ok: fa
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {
   const clean = code.replace(/\D/g, '');
   if (clean.length !== 6) return false;
-  if (bypassCode() === clean) return true;
+  // Every guess — the test code included — is checked against a code that was actually requested, and
+  // counts toward its five tries. That keeps anyone from guessing the test code at speed.
   const [row] = await db.select().from(otpCodes).where(eq(otpCodes.phone, phone));
   if (!row || row.expiresAt < Date.now() || row.attempts >= OTP_MAX_ATTEMPTS) return false;
-  if (row.codeHash !== sha256(phone + clean)) {
-    await db.update(otpCodes).set({ attempts: row.attempts + 1 }).where(eq(otpCodes.phone, phone));
-    return false;
+  if (bypassCode() === clean || row.codeHash === sha256(phone + clean)) {
+    await db.delete(otpCodes).where(eq(otpCodes.phone, phone));
+    return true;
   }
-  await db.delete(otpCodes).where(eq(otpCodes.phone, phone));
-  return true;
+  await db.update(otpCodes).set({ attempts: row.attempts + 1 }).where(eq(otpCodes.phone, phone));
+  return false;
 }
 
 /** Finds the account for a verified phone number, or creates it. Blank name/email on an existing account are filled in. */
@@ -63,8 +64,11 @@ export async function findOrCreateUser(phone: string, name = '', email = ''): Pr
     await db.update(users).set(patch).where(eq(users.id, existing.id));
     return { ...existing, ...patch };
   }
-  const [created] = await db.insert(users).values({ id: newId(), phone, name, email }).returning();
-  return created;
+  // If a second request created the account in the same instant, use that one.
+  const [created] = await db.insert(users).values({ id: newId(), phone, name, email }).onConflictDoNothing().returning();
+  if (created) return created;
+  const [raced] = await db.select().from(users).where(eq(users.phone, phone));
+  return raced;
 }
 
 /** Sets the session cookie. Only callable from a Server Action or Route Handler. */

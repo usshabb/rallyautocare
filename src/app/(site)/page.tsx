@@ -1,9 +1,8 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { BookingPanel } from '@/components/booking/BookingPanel';
-import { BookLink } from '@/components/booking/BookLink';
+import { PathChooser } from '@/components/booking/PathChooser';
 import { BusinessBand, DetailCards, MembershipCards, SectionHead, SpecialtyGrid } from '@/components/site/sections';
-import { bypassCode, currentUser } from '@/lib/auth';
+import { currentUser, visibleTestCode } from '@/lib/auth';
 import { panelCustomer } from '@/lib/panel';
 
 // Stock photo standing in until Rally's own before/after shots are supplied.
@@ -20,14 +19,9 @@ export default async function HomePage() {
             <span className="rly-label hero__kicker">Mobile detailing · Northern Virginia &amp; DMV</span>
             <h1 className="rly-display hero__title">Detailing that comes to you.</h1>
             <p className="hero__lede">
-              We bring the water, power and gear to your driveway or office. Book a one-time detail, or stay clean every month with a membership.
+              We bring the water, power and gear to your driveway or office. Stay clean every month with a membership, or book a one-time detail.
             </p>
-            <div className="wrap-row">
-              <BookLink className="rly-btn rly-btn--primary rly-btn--lg">Book a detail</BookLink>
-              <Link href="/#memberships" className="rly-btn rly-btn--secondary rly-btn--on-dark rly-btn--lg">
-                See memberships
-              </Link>
-            </div>
+            <PathChooser tone="dark" />
             <div className="hero__facts">
               <div className="hero__fact">
                 <span className="rly-index">01</span>
@@ -60,18 +54,18 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <section id="memberships" className="wrap section">
+        <SectionHead index="01 / MEMBERSHIPS" title="Stay clean on a schedule" aside="One vehicle per membership, on a steady schedule. No contract — cancel anytime." />
+        <MembershipCards />
+      </section>
+
       <section id="details" className="wrap section">
         <SectionHead
-          index="01 / ONE-TIME"
-          title="Pick your detail"
+          index="02 / ONE-TIME"
+          title="Or book a single detail"
           aside="SUVs & larger vehicles +$20. Severe stains, heavy pet hair or neglected vehicles may cost more — we confirm before we start."
         />
         <DetailCards />
-      </section>
-
-      <section id="memberships" className="wrap section">
-        <SectionHead index="02 / MEMBERSHIPS" title="Stay clean on a schedule" />
-        <MembershipCards />
       </section>
 
       <section id="specialty" className="wrap section">
@@ -81,7 +75,7 @@ export default async function HomePage() {
 
       <section id="book" className="wrap section">
         <SectionHead index="04 / BOOK" title="Book your time" />
-        <BookingPanel customer={customer} testCode={bypassCode()} />
+        <BookingPanel customer={customer} testCode={visibleTestCode()} />
       </section>
 
       <section id="business" className="wrap section">

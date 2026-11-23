@@ -19,18 +19,18 @@ export default function PricingPage() {
             Every price is listed up front. If your vehicle needs more than the package covers, we tell you before we start — never after.
           </p>
           <div className="wrap-row">
-            <BookLink className="rly-btn rly-btn--primary rly-btn--lg">Book a detail</BookLink>
+            <BookLink mode="member" serviceId="plus" className="rly-btn rly-btn--primary rly-btn--lg">
+              Join a membership
+            </BookLink>
+            <BookLink mode="detail" serviceId="full" className="rly-btn rly-btn--secondary rly-btn--on-dark rly-btn--lg">
+              Book one time
+            </BookLink>
           </div>
         </div>
       </section>
 
-      <section id="details" className="wrap section">
-        <SectionHead index="01 / ONE-TIME" title="One-time details" aside={`SUVs & larger vehicles +${usd(SIZE_SURCHARGE)}. Each package includes everything in the one before it.`} />
-        <DetailCards />
-      </section>
-
       <section id="memberships" className="wrap section">
-        <SectionHead index="02 / MEMBERSHIPS" title="Monthly memberships" aside="Keep your vehicle consistently clean and get a better price for staying on a schedule." />
+        <SectionHead index="01 / MEMBERSHIPS" title="Monthly memberships" aside="Keep your vehicle consistently clean and get a better price for staying on a schedule." />
         <MembershipCards />
         <div className="table-wrap" style={{ marginTop: 16 }}>
           <table className="rly-table">
@@ -63,6 +63,11 @@ export default function PricingPage() {
           New members start with an initial detail, from {usd(INITIAL_DETAIL.price)} for cars and priced by size and condition. Heavily neglected vehicles are quoted individually.
           One vehicle per membership. No long-term contract — cancel anytime.
         </p>
+      </section>
+
+      <section id="details" className="wrap section">
+        <SectionHead index="02 / ONE-TIME" title="One-time details" aside={`SUVs & larger vehicles +${usd(SIZE_SURCHARGE)}. Each package includes everything in the one before it.`} />
+        <DetailCards />
       </section>
 
       <section id="addons" className="wrap section">
